@@ -7,20 +7,21 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <vector>
 #include <fstream>
 using namespace std;
 
 #include "cache.h"
+#include "msi.h"
 
 int main(int argc, char *argv[])
 {
 	
-	ifstream fin;
-	FILE * pFile;
+	ifstream trace;
 
 	if(argv[1] == NULL){
-		 printf("input format: ");
-		 printf("./smp_cache <cache_size> <assoc> <block_size> <num_processors> <protocol> <trace_file> \n");
+		 cout << "input format: ";
+		 cout << "./smp_cache <cache_size> <assoc> <block_size> <num_processors> <protocol> <trace_file> " << endl;
 		 exit(0);
         }
 
@@ -29,8 +30,6 @@ int main(int argc, char *argv[])
 	int blk_size   = atoi(argv[3]);
 	int num_processors = atoi(argv[4]);/*1, 2, 4, 8*/
 	int protocol   = atoi(argv[5]);	 /*0:MSI, 1:MESI, 2:Dragon*/
-	char *fname =  (char *)malloc(20);
- 	fname = argv[6];
 
 	
 	//****************************************************//
@@ -41,21 +40,57 @@ int main(int argc, char *argv[])
  
 	//*********************************************//
         //*****create an array of caches here**********//
+    //Instantiating the caches
+    vector<Cache> p_caches(num_processors,Cache(cache_size,cache_assoc,blk_size));
+    msi_bus* MSI;
+    switch(protocol)
+    {
+        case 0:
+            MSI = new msi_bus(&p_caches, num_processors);
+            break;
+        //Add other cases as well
+    }
 	//*********************************************//	
 
-	pFile = fopen (fname,"r");
-	if(pFile == 0)
+	trace.open(argv[6]);
+	if(trace.fail())
 	{   
-		printf("Trace file problem\n");
-		exit(0);
+		cout << "Trace file problem" << endl;
+		exit(1);
 	}
+
+	string strIn;
+	getline(trace,strIn);
+	Transaction tran;
+	bool hit, bus_chk;
+	int bus_tran;
+	int tran_cnt=0;
+	while (!trace.eof())
+    {
+        tran_cnt++;
+        if(Debug) cout << tran_cnt << "." << endl;
+        tran.setAttr(strIn);
+        hit = p_caches.at(tran.proc_id()).Access(tran.getAddr(),tran.tranType());
+	   
+	    switch (protocol)
+        {
+            case 0:
+                if(Debug) cout << "P" << tran.proc_id() << " ";
+                bus_tran = p_caches.at(tran.proc_id()).update_proc_MSI(tran.getAddr(),tran.tranType(),hit);
+                if(Debug) cout << "BUS "<< bus_tran << endl;
+                MSI->access(tran.getAddr(),tran.proc_id(),bus_tran);
+                break;
+        }
+
+	    getline(trace,strIn);
+    }
+
 	///******************************************************************//
 	//**read trace file,line by line,each(processor#,operation,address)**//
 	//*****propagate each request down through memory hierarchy**********//
 	//*****by calling cachesArray[processor#]->Access(...)***************//
 	///******************************************************************//
-	fclose(pFile);
-
+	
 	//********************************//
 	//print out all caches' statistics //
 	//********************************//

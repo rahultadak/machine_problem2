@@ -10,6 +10,8 @@
 #include "cache.h"
 using namespace std;
 
+int Debug = 1;
+
 Cache::Cache(int s,int a,int b )
 {
    ulong i, j;
@@ -36,10 +38,10 @@ Cache::Cache(int s,int a,int b )
    }
    
    /**create a two dimentional cache, sized as cache[sets][assoc]**/ 
-   cache = new cacheLine*[sets];
+   cache.resize(sets);
    for(i=0; i<sets; i++)
    {
-      cache[i] = new cacheLine[assoc];
+      cache[i].resize(assoc);
       for(j=0; j<assoc; j++) 
       {
 	   cache[i][j].invalidate();
@@ -51,7 +53,8 @@ Cache::Cache(int s,int a,int b )
 /**you might add other parameters to Access()
 since this function is an entry point 
 to the memory hierarchy (i.e. caches)**/
-void Cache::Access(ulong addr,uchar op)
+//Returns hit or miss from the cache.
+bool Cache::Access(ulong addr,uchar op)
 {
 	currentCycle++;/*per cache global counter to maintain LRU order 
 			among cache ways, updated on every cache access*/
@@ -64,18 +67,66 @@ void Cache::Access(ulong addr,uchar op)
 	{
 		if(op == 'w') writeMisses++;
 		else readMisses++;
-
-		cacheLine *newline = fillLine(addr);
-   		if(op == 'w') newline->setFlags(DIRTY);    
-		
-	}
-	else
-	{
-		/**since it's a hit, update LRU and update dirty flag**/
-		updateLRU(line);
-		if(op == 'w') line->setFlags(DIRTY);
-	}
+		return false;
+    }
+    return true;
 }
+
+int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
+{
+    int bus_tran;
+	cacheLine * line = findLine(addr);
+    if(hit)
+    {
+        if(op == 'w'&&line->getFlags()==SHARED)
+        {
+            //Initiate us transaction based on previus state
+            //Send BUSRDX
+            bus_tran = BUS_RDX;
+            line->setFlags(MODIFIED);
+            //Do not do anything if read when shared
+            //Do not do anything if read/write when modified
+            //
+        }
+        else
+            bus_tran = NONE;
+
+        if (Debug) cout << "new "<< line->getFlags() << " " << endl;
+    }
+
+    //TODO Need to add functionality when miss
+    else
+    {
+        cacheLine *newline = fillLine(addr);
+        newline->setTag(calcTag(addr));
+
+   		if(op == 'w') 
+        {
+            newline->setFlags(MODIFIED);    
+   		    bus_tran = BUS_RDX;
+        }
+        else if(op == 'r')
+        {
+            newline->setFlags(SHARED);
+            bus_tran = BUS_RD;
+        }
+    if (Debug) cout << "new " << newline->getFlags() << endl;
+    }
+    return bus_tran;
+}
+
+//        //TODO need to change access function here to send bus transaction
+//		cacheLine *newline = fillLine(addr);
+//   		if(op == 'w') newline->setFlags(DIRTY);    
+//		
+//	}
+//	else
+//	{
+//		/**since it's a hit, update LRU and update dirty flag**/
+//		updateLRU(line);
+//		if(op == 'w') line->setFlags(DIRTY);
+//	}
+//}
 
 /*look up line*/
 cacheLine * Cache::findLine(ulong addr)
@@ -138,19 +189,14 @@ cacheLine *Cache::findLineToReplace(ulong addr)
 /*allocate a new line*/
 cacheLine *Cache::fillLine(ulong addr)
 { 
-   ulong tag;
-  
    cacheLine *victim = findLineToReplace(addr);
    assert(victim != 0);
-   if(victim->getFlags() == DIRTY) writeBack(addr);
-    	
-   tag = calcTag(addr);   
-   victim->setTag(tag);
-   victim->setFlags(VALID);    
+   //TODO change dirty to modified?
+   if(victim->getFlags() == MODIFIED || SHARED_M) writeBack(addr);
+
    /**note that this cache line has been already 
       upgraded to MRU in the previous function (findLineToReplace)**/
-
-   return victim;
+   return victim;   	
 }
 
 void Cache::printStats()
