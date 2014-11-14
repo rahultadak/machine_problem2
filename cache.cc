@@ -8,16 +8,17 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "cache.h"
+#include <iomanip>
 using namespace std;
 
-int Debug = 1;
+int Debug = 0;
 
 Cache::Cache(int s,int a,int b )
 {
    ulong i, j;
    reads = readMisses = writes = 0; 
    writeMisses = writeBacks = currentCycle = 0;
-
+    interventions = invalidations = mem = c2c_transfers = flushes = 0;
    size       = (ulong)(s);
    lineSize   = (ulong)(b);
    assoc      = (ulong)(a);   
@@ -37,14 +38,14 @@ Cache::Cache(int s,int a,int b )
         tagMask |= 1;
    }
    
-   /**create a two dimentional cache, sized as cache[sets][assoc]**/ 
+   /**create a two dimentional cache, sized as vector<vector<Cache>> cache(sets)(assoc)**/ 
    cache.resize(sets);
    for(i=0; i<sets; i++)
    {
-      cache[i].resize(assoc);
+      cache.at(i).resize(assoc);
       for(j=0; j<assoc; j++) 
       {
-	   cache[i][j].invalidate();
+	   cache.at(i).at(j).invalidate();
       }
    }      
    
@@ -65,6 +66,7 @@ bool Cache::Access(ulong addr,uchar op)
 	cacheLine * line = findLine(addr);
 	if(line == NULL)/*miss*/
 	{
+        if(Debug) cout << "MISS" << endl;
 		if(op == 'w') writeMisses++;
 		else readMisses++;
 		return false;
@@ -76,14 +78,16 @@ int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
 {
     int bus_tran;
 	cacheLine * line = findLine(addr);
-    if(hit)
-    {
+    if(line!=NULL)
+    {    
+		updateLRU(line);
         if(op == 'w'&&line->getFlags()==SHARED)
         {
             //Initiate us transaction based on previus state
             //Send BUSRDX
             bus_tran = BUS_RDX;
             line->setFlags(MODIFIED);
+            memory();
             //Do not do anything if read when shared
             //Do not do anything if read/write when modified
             //
@@ -98,8 +102,8 @@ int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
     else
     {
         cacheLine *newline = fillLine(addr);
+        //Counters updates in the above functions
         newline->setTag(calcTag(addr));
-
    		if(op == 'w') 
         {
             newline->setFlags(MODIFIED);    
@@ -138,15 +142,15 @@ cacheLine * Cache::findLine(ulong addr)
    i   = calcIndex(addr);
   
    for(j=0; j<assoc; j++)
-	if(cache[i][j].isValid())
-	        if(cache[i][j].getTag() == tag)
+	if(cache.at(i).at(j).isValid())
+	        if(cache.at(i).at(j).getTag() == tag)
 		{
 		     pos = j; break; 
 		}
    if(pos == assoc)
 	return NULL;
    else
-	return &(cache[i][pos]); 
+	return &(cache.at(i).at(pos)); 
 }
 
 /*upgrade LRU line to be MRU line*/
@@ -166,15 +170,15 @@ cacheLine * Cache::getLRU(ulong addr)
    
    for(j=0;j<assoc;j++)
    {
-      if(cache[i][j].isValid() == 0) return &(cache[i][j]);     
+      if(cache.at(i).at(j).isValid() == 0) return &(cache.at(i).at(j));     
    }   
    for(j=0;j<assoc;j++)
    {
-	 if(cache[i][j].getSeq() <= min) { victim = j; min = cache[i][j].getSeq();}
+	 if(cache.at(i).at(j).getSeq() <= min) { victim = j; min = cache.at(i).at(j).getSeq();}
    } 
    assert(victim != assoc);
    
-   return &(cache[i][victim]);
+   return &(cache.at(i).at(victim));
 }
 
 /*find a victim, move it to MRU position*/
@@ -191,17 +195,55 @@ cacheLine *Cache::fillLine(ulong addr)
 { 
    cacheLine *victim = findLineToReplace(addr);
    assert(victim != 0);
+    memory();
+    if(Debug && victim->isValid()) cout << "EVICT " << victim->getTag()<< endl;
    //TODO change dirty to modified?
-   if(victim->getFlags() == MODIFIED || SHARED_M) writeBack(addr);
+   if(victim->getFlags() == MODIFIED) 
+   {
+       if(Debug) cout << "WRITE BACK" << endl;
+       writeBack();
+        memory();
+   }
 
    /**note that this cache line has been already 
       upgraded to MRU in the previous function (findLineToReplace)**/
    return victim;   	
 }
 
-void Cache::printStats()
+void Cache::printStats(int i)
 { 
-	cout << "===== Simulation results      =====" << endl;
+	cout << "============ Simulation results (Cache " << i << ") ============" << endl;
 	/****print out the rest of statistics here.****/
 	/****follow the ouput file format**************/
+	cout << "01. number of reads: 				    " << dec <<  reads << endl;
+    cout << "02. number of read misses: 			" << dec << readMisses << endl;
+    cout << "03. number of writes: 				    " << dec << writes << endl;
+    cout << "04. number of write misses:			" << dec << writeMisses << endl;
+    cout << "05. total miss rate: 				    " 
+        << setprecision(2) << fixed 
+        << (float)(readMisses + writeMisses)*100/(reads+writes) << "%" << endl;
+    cout << "06. number of writebacks: 			    " << dec << writeBacks << endl;
+    cout << "07. number of cache-to-cache transfers:    " << c2c_transfers << endl;
+    cout << "08. number of memory transactions: 	    " << mem << endl; 
+    cout << "09. number of interventions: 			" << interventions << endl;
+    cout << "10. number of invalidations: 			" << invalidations << endl;
+    cout << "11. number of flushes: 				" << flushes << endl;
 }
+
+void Cache::printCacheBlk (ulong addr)
+{
+   ulong i, j, tag, pos;
+   
+   pos = assoc;
+   tag = calcTag(addr);
+   i   = calcIndex(addr);
+  
+   cout << (uint)tag << endl;
+   for(j=0; j<assoc; j++)
+   {
+       cout << hex << (uint)cache.at(i).at(j).getTag() << " " << cache.at(i).at(j).getFlags() << " | ";
+   }
+   cout << endl;
+}
+
+

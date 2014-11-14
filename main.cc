@@ -16,6 +16,13 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
+    if(!Debug)
+    {
+        cout << "===== 506 Personal information =====" << endl;
+        cout << "Rahul Tadakamadla" << endl;
+        cout << "rtadaka@ncsu.edu" << endl;
+        cout << "Section ECE 506-001" << endl;
+    }
 	
 	ifstream trace;
 
@@ -34,6 +41,16 @@ int main(int argc, char *argv[])
 	
 	//****************************************************//
 	//**printf("===== Simulator configuration =====\n");**//
+	cout << "===== 506 SMP Simulator onfiguration =====" << endl;
+	cout << "L1_SIZE:               " << cache_size << endl;
+	cout << "L1_ASSOC:              " << cache_assoc << endl;
+	cout << "L1_BLOCKSIZE:          " << blk_size << endl;
+	cout << "NUMBER OF PROCESSORS:  " << num_processors << endl;
+	cout << "COHERENCE PROTOCOL:    ";
+	if(protocol==0) cout << "MSI" << endl;
+    else if(protocol==1) cout << "MESI" << endl;
+    else cout << "DRAGON" << endl;
+    cout << "TRACE FILE:            " << argv[6] << endl;
 	//*******print out simulator configuration here*******//
 	//****************************************************//
 
@@ -68,20 +85,26 @@ int main(int argc, char *argv[])
 	while (!trace.eof())
     {
         tran_cnt++;
-        if(Debug) cout << tran_cnt << "." << endl;
         tran.setAttr(strIn);
+        if(Debug) cout << tran_cnt << ". " << hex << tran.getAddr() << endl;
+        if(Debug) cout << "P" << tran.proc_id() << " proc ";
         hit = p_caches.at(tran.proc_id()).Access(tran.getAddr(),tran.tranType());
 	   
+	    if(Debug) p_caches.at(tran.proc_id()).printCacheBlk(tran.getAddr());
 	    switch (protocol)
         {
             case 0:
-                if(Debug) cout << "P" << tran.proc_id() << " ";
                 bus_tran = p_caches.at(tran.proc_id()).update_proc_MSI(tran.getAddr(),tran.tranType(),hit);
                 if(Debug) cout << "BUS "<< bus_tran << endl;
                 MSI->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
         }
 
+        if(Debug)
+        {
+	        p_caches.at(tran.proc_id()).printCacheBlk(tran.getAddr());
+	        cout << endl;
+        }
 	    getline(trace,strIn);
     }
 
@@ -94,5 +117,9 @@ int main(int argc, char *argv[])
 	//********************************//
 	//print out all caches' statistics //
 	//********************************//
+	for (int i;i<num_processors;i++)
+    {
+        p_caches.at(i).printStats(i);
+    }
 	
 }

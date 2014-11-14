@@ -46,14 +46,15 @@ class Cache
 {
 private:
    ulong size, lineSize, assoc, sets, log2Sets, log2Blk, tagMask, numLines;
-   ulong reads,readMisses,writes,writeMisses,writeBacks;
+   ulong reads,readMisses,writes,writeMisses,writeBacks,mem;
 
    //******///
    //add coherence counters here///
+   ulong interventions, invalidations, flushes, c2c_transfers;
    //******///
 
    vector< vector<cacheLine> > cache;
-   ulong calcTag(ulong addr)     { return (addr >> (log2Blk) );}
+   ulong calcTag(ulong addr)     { return (addr >> (log2Blk+log2Sets) );}
    ulong calcIndex(ulong addr)  { return ((addr >> log2Blk) & tagMask);}
    ulong calcAddr4Tag(ulong tag)   { return (tag << (log2Blk));}
    
@@ -79,18 +80,24 @@ public:
    ulong getReads(){return reads;}ulong getWrites(){return writes;}
    ulong getWB(){return writeBacks;}
    
-   void writeBack(ulong)   {writeBacks++;}
+   void writeBack()   {writeBacks++;}
    bool Access(ulong,uchar);
-   void printStats();
+   void printStats(int i);
    void updateLRU(cacheLine *);
 
+   void intervene()     {interventions++;}
+   void invalidate()     {invalidations++;}
+   void flush()     {flushes++;}
+   void c2c()   {c2c_transfers++;}
+   void memory() {mem++;}
    //Protocol Functions
    int update_proc_MSI(ulong addr, uchar op, bool hit);
 
    //******///
    //add other functions to handle bus transactions///
    //******///
-
+   void printCacheBlk (ulong addr);
+   
 };
 
 class Transaction{
@@ -109,7 +116,7 @@ class Transaction{
             buf >> rw;
             buf>>hex>>addr;
         }
-        int getAddr() { return addr; }
+        uint getAddr() { return addr; }
 
 };
  
