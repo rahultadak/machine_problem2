@@ -13,6 +13,6 @@ enum{
     BUS_RDX,
     BUS_UPGR,
     BUS_UPD,
-    FLUSH
+    BUS_RD_UPD
 };
 

@@ -14,6 +14,7 @@ using namespace std;
 #include "cache.h"
 #include "msi.h"
 #include "mesi.h"
+#include "dragon.h"
 
 int main(int argc, char *argv[])
 {
@@ -62,6 +63,7 @@ int main(int argc, char *argv[])
     vector<Cache> p_caches(num_processors,Cache(cache_size,cache_assoc,blk_size));
     msi_bus* MSI;
     mesi_bus* MESI;
+    dragon_bus* Dragon;
     switch(protocol)
     {
         case 0:
@@ -70,6 +72,10 @@ int main(int argc, char *argv[])
         
         case 1:
             MESI = new mesi_bus(&p_caches, num_processors);
+            break;
+
+        case 2:
+            Dragon = new dragon_bus(&p_caches, num_processors);
             break;
         //Add other cases as well
     }
@@ -110,6 +116,13 @@ int main(int argc, char *argv[])
                 bus_tran = p_caches.at(tran.proc_id()).update_proc_MESI(tran.getAddr(),tran.tranType(),bus_chk);
                 if(Debug) cout << "BUS "<< bus_tran << endl;
                 MESI->access(tran.getAddr(),tran.proc_id(),bus_tran);
+                break;
+            
+            case 2:
+                bus_chk = Dragon->check(tran.getAddr(),tran.proc_id());
+                bus_tran = p_caches.at(tran.proc_id()).update_proc_Dragon(tran.getAddr(),tran.tranType(),bus_chk);
+                if(Debug) cout << "BUS "<< bus_tran << endl;
+                Dragon->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
         }
 

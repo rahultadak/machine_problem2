@@ -181,6 +181,83 @@ int Cache::update_proc_MESI(ulong addr,uchar op,bool bus_chk)
     return bus_tran;
 }
 
+int Cache::update_proc_Dragon(ulong addr,uchar op,bool bus_chk)
+{
+    int bus_tran;
+	cacheLine * line = findLine(addr);
+    if(line!=NULL)  //HIT
+    {    
+		updateLRU(line);
+        bus_tran = NONE;
+
+        //Do not do anything if read for any state
+        //Do not do anything if write when modified
+        
+        if(op == 'w')
+        {
+            if(line->getFlags() == EXCLUSIVE)
+            {
+                line->setFlags(MODIFIED);
+            }
+            else if(line->getFlags()==SHARED_C)
+            {
+                //Initiate us transaction based on previus state
+                //Send BUS_UPGR
+                if(bus_chk) line->setFlags(SHARED_M);
+                else line->setFlags(MODIFIED);
+
+                bus_tran = BUS_UPD;
+            }
+            else if(line->getFlags() == SHARED_M)
+            {
+                if(!bus_chk) line->setFlags(MODIFIED);
+                bus_tran = BUS_UPD;
+            }
+        }
+
+        if (Debug) cout << "new "<< line->getFlags() << " " << endl;
+    }
+    else
+    {
+        cacheLine *newline = fillLine(addr);
+        //Counters updates in the above functions
+        newline->setTag(calcTag(addr));
+   		if(op == 'w') 
+        {
+   		    if(bus_chk)
+            {
+                newline->setFlags(SHARED_M); 
+                bus_tran = BUS_RD_UPD;
+                memory();
+            }
+            else 
+            {
+                newline->setFlags(MODIFIED);
+                bus_tran = BUS_RD;
+                memory();
+            }
+   		    
+        }
+        else if(op == 'r')
+        {
+            if (bus_chk)
+            {
+                newline->setFlags(SHARED_C);
+                memory();
+            }
+            else
+            {
+                newline->setFlags(EXCLUSIVE); 
+                memory();
+            }
+
+            bus_tran = BUS_RD;
+        }
+    if (Debug) cout << "new " << newline->getFlags() << endl;
+    }
+    return bus_tran;
+}
+
 /*look up line*/
 cacheLine * Cache::findLine(ulong addr)
 {
@@ -246,10 +323,10 @@ cacheLine *Cache::fillLine(ulong addr)
    assert(victim != 0);
     if(Debug && victim->isValid()) cout << "EVICT " << victim->getTag()<< endl;
    //TODO change dirty to modified?
-   if(victim->getFlags() == MODIFIED) 
+   if(victim->getFlags() == MODIFIED||victim->getFlags() == SHARED_M)  
    {
        if(Debug) cout << "WRITE BACK" << endl;
-       writeBack();
+        writeBack();
         memory();
    }
 

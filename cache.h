@@ -93,6 +93,7 @@ public:
    //Protocol Functions
    int update_proc_MSI(ulong addr, uchar op);
    int update_proc_MESI(ulong addr, uchar op,bool bus_chk);
+   int update_proc_Dragon(ulong addr, uchar op,bool bus_chk);
 
    //******///
    //add other functions to handle bus transactions///
