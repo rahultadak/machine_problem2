@@ -55,7 +55,7 @@ Cache::Cache(int s,int a,int b )
 since this function is an entry point 
 to the memory hierarchy (i.e. caches)**/
 //Returns hit or miss from the cache.
-bool Cache::Access(ulong addr,uchar op)
+void Cache::Access(ulong addr,uchar op)
 {
 	currentCycle++;/*per cache global counter to maintain LRU order 
 			among cache ways, updated on every cache access*/
@@ -69,12 +69,11 @@ bool Cache::Access(ulong addr,uchar op)
         if(Debug) cout << "MISS" << endl;
 		if(op == 'w') writeMisses++;
 		else readMisses++;
-		return false;
     }
-    return true;
+    return;
 }
 
-int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
+int Cache::update_proc_MSI(ulong addr,uchar op)
 {
     int bus_tran;
 	cacheLine * line = findLine(addr);
@@ -98,11 +97,11 @@ int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
         if (Debug) cout << "new "<< line->getFlags() << " " << endl;
     }
 
-    //TODO Need to add functionality when miss
     else
     {
         cacheLine *newline = fillLine(addr);
-        //Counters updates in the above functions
+        memory(); //Line fill memory transaction
+        //Write back(Eviction) Counters updated in the above functions
         newline->setTag(calcTag(addr));
    		if(op == 'w') 
         {
@@ -119,18 +118,68 @@ int Cache::update_proc_MSI(ulong addr,uchar op, bool hit)
     return bus_tran;
 }
 
-//        //TODO need to change access function here to send bus transaction
-//		cacheLine *newline = fillLine(addr);
-//   		if(op == 'w') newline->setFlags(DIRTY);    
-//		
-//	}
-//	else
-//	{
-//		/**since it's a hit, update LRU and update dirty flag**/
-//		updateLRU(line);
-//		if(op == 'w') line->setFlags(DIRTY);
-//	}
-//}
+int Cache::update_proc_MESI(ulong addr,uchar op,bool bus_chk)
+{
+    int bus_tran;
+	cacheLine * line = findLine(addr);
+    if(line!=NULL)  //HIT
+    {    
+		updateLRU(line);
+        bus_tran = NONE;
+
+        if(op == 'w')
+        {
+            if(line->getFlags()==SHARED)
+            {
+                //Initiate us transaction based on previus state
+                //Send BUS_UPGR
+                bus_tran = BUS_UPGR;
+                line->setFlags(MODIFIED);
+                //Do not do anything if read when shared
+                //Do not do anything if read/write when modified
+                //Do not do anything if read when exclusive
+            }
+            else if(line->getFlags() == EXCLUSIVE)
+            {
+                line->setFlags(MODIFIED);
+            }
+        }
+
+        if (Debug) cout << "new "<< line->getFlags() << " " << endl;
+    }
+
+    //TODO update for MESI MISS
+    else
+    {
+        cacheLine *newline = fillLine(addr);
+        //Counters updates in the above functions
+        newline->setTag(calcTag(addr));
+   		if(op == 'w') 
+        {
+            newline->setFlags(MODIFIED);    
+   		    bus_tran = BUS_RDX;
+   		    if(bus_chk) c2c();
+            else memory();
+        }
+        else if(op == 'r')
+        {
+            if (bus_chk)
+            {
+                newline->setFlags(SHARED);
+                c2c();
+            }
+            else
+            {
+                newline->setFlags(EXCLUSIVE);
+                memory();
+            }
+
+            bus_tran = BUS_RD;
+        }
+    if (Debug) cout << "new " << newline->getFlags() << endl;
+    }
+    return bus_tran;
+}
 
 /*look up line*/
 cacheLine * Cache::findLine(ulong addr)
@@ -195,7 +244,6 @@ cacheLine *Cache::fillLine(ulong addr)
 { 
    cacheLine *victim = findLineToReplace(addr);
    assert(victim != 0);
-    memory();
     if(Debug && victim->isValid()) cout << "EVICT " << victim->getTag()<< endl;
    //TODO change dirty to modified?
    if(victim->getFlags() == MODIFIED) 

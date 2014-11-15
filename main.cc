@@ -13,6 +13,7 @@ using namespace std;
 
 #include "cache.h"
 #include "msi.h"
+#include "mesi.h"
 
 int main(int argc, char *argv[])
 {
@@ -60,10 +61,15 @@ int main(int argc, char *argv[])
     //Instantiating the caches
     vector<Cache> p_caches(num_processors,Cache(cache_size,cache_assoc,blk_size));
     msi_bus* MSI;
+    mesi_bus* MESI;
     switch(protocol)
     {
         case 0:
             MSI = new msi_bus(&p_caches, num_processors);
+            break;
+        
+        case 1:
+            MESI = new mesi_bus(&p_caches, num_processors);
             break;
         //Add other cases as well
     }
@@ -79,7 +85,7 @@ int main(int argc, char *argv[])
 	string strIn;
 	getline(trace,strIn);
 	Transaction tran;
-	bool hit, bus_chk;
+	bool bus_chk;
 	int bus_tran;
 	int tran_cnt=0;
 	while (!trace.eof())
@@ -88,15 +94,22 @@ int main(int argc, char *argv[])
         tran.setAttr(strIn);
         if(Debug) cout << tran_cnt << ". " << hex << tran.getAddr() << endl;
         if(Debug) cout << "P" << tran.proc_id() << " proc ";
-        hit = p_caches.at(tran.proc_id()).Access(tran.getAddr(),tran.tranType());
+        p_caches.at(tran.proc_id()).Access(tran.getAddr(),tran.tranType());
 	   
 	    if(Debug) p_caches.at(tran.proc_id()).printCacheBlk(tran.getAddr());
 	    switch (protocol)
         {
             case 0:
-                bus_tran = p_caches.at(tran.proc_id()).update_proc_MSI(tran.getAddr(),tran.tranType(),hit);
+                bus_tran = p_caches.at(tran.proc_id()).update_proc_MSI(tran.getAddr(),tran.tranType());
                 if(Debug) cout << "BUS "<< bus_tran << endl;
                 MSI->access(tran.getAddr(),tran.proc_id(),bus_tran);
+                break;
+            
+            case 1:
+                bus_chk = MESI->check(tran.getAddr(),tran.proc_id());
+                bus_tran = p_caches.at(tran.proc_id()).update_proc_MESI(tran.getAddr(),tran.tranType(),bus_chk);
+                if(Debug) cout << "BUS "<< bus_tran << endl;
+                MESI->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
         }
 

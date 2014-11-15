@@ -12,6 +12,7 @@ enum{
     BUS_RD,
     BUS_RDX,
     BUS_UPGR,
+    BUS_UPD,
     FLUSH
 };
 

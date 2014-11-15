@@ -81,7 +81,7 @@ public:
    ulong getWB(){return writeBacks;}
    
    void writeBack()   {writeBacks++;}
-   bool Access(ulong,uchar);
+   void Access(ulong,uchar);
    void printStats(int i);
    void updateLRU(cacheLine *);
 
@@ -91,7 +91,8 @@ public:
    void c2c()   {c2c_transfers++;}
    void memory() {mem++;}
    //Protocol Functions
-   int update_proc_MSI(ulong addr, uchar op, bool hit);
+   int update_proc_MSI(ulong addr, uchar op);
+   int update_proc_MESI(ulong addr, uchar op,bool bus_chk);
 
    //******///
    //add other functions to handle bus transactions///
