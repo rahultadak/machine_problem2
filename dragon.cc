@@ -81,10 +81,14 @@ void dragon_bus::access(ulong addr, int proc_id, int bus_tran)
                     if(Debug) cout << "P" << i << " old " << old_state 
                         << " new " << line->getFlags() << endl;
                     p_caches->at(i).flush();
+                    p_caches->at(i).writeBack();
+                    p_caches->at(i).memory();
                     break;
                     
                 case BUS_RD_UPD:
                     p_caches->at(i).flush();
+                    p_caches->at(i).writeBack();
+                    p_caches->at(i).memory();
                     line->setFlags(SHARED_C);
                     break;
                     
@@ -101,12 +105,16 @@ void dragon_bus::access(ulong addr, int proc_id, int bus_tran)
                 case BUS_RD:
                     line->setFlags(SHARED_M);
                     p_caches->at(i).flush();
+                    p_caches->at(i).writeBack();
+                    p_caches->at(i).memory();
                     p_caches->at(i).intervene();
                     break;
                 
                 case BUS_RD_UPD:
                     line->setFlags(SHARED_C);
                     p_caches->at(i).flush();
+                    p_caches->at(i).writeBack();
+                    p_caches->at(i).memory();
                     p_caches->at(i).intervene();
                     break;
             }
