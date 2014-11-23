@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
 
 	
 	//****************************************************//
-	//**printf("===== Simulator configuration =====\n");**//
+	//*******print out simulator configuration here*******//
 	cout << "===== 506 SMP Simulator onfiguration =====" << endl;
 	cout << "L1_SIZE:               " << cache_size << endl;
 	cout << "L1_ASSOC:              " << cache_assoc << endl;
@@ -53,17 +53,17 @@ int main(int argc, char *argv[])
     else if(protocol==1) cout << "MESI" << endl;
     else cout << "DRAGON" << endl;
     cout << "TRACE FILE:            " << argv[6] << endl;
-	//*******print out simulator configuration here*******//
 	//****************************************************//
 
  
 	//*********************************************//
         //*****create an array of caches here**********//
-    //Instantiating the caches
+    //Instantiating the caches and bus object pointers
     vector<Cache> p_caches(num_processors,Cache(cache_size,cache_assoc,blk_size));
     msi_bus* MSI;
     mesi_bus* MESI;
     dragon_bus* Dragon;
+    //Creating bus objects as required
     switch(protocol)
     {
         case 0:
@@ -77,10 +77,9 @@ int main(int argc, char *argv[])
         case 2:
             Dragon = new dragon_bus(&p_caches, num_processors);
             break;
-        //Add other cases as well
     }
-	//*********************************************//	
 
+    //Trace file check
 	trace.open(argv[6]);
 	if(trace.fail())
 	{   
@@ -89,39 +88,55 @@ int main(int argc, char *argv[])
 	}
 
 	string strIn;
+	//Get first line of trace
 	getline(trace,strIn);
 	Transaction tran;
 	bool bus_chk;
 	int bus_tran;
 	int tran_cnt=0;
+
+	//Beginning trace read and bus execution loop
 	while (!trace.eof())
     {
         tran_cnt++;
+        //Transaction object definition
         tran.setAttr(strIn);
         if(Debug) cout << tran_cnt << ". " << hex << tran.getAddr() << endl;
         if(Debug) cout << "P" << tran.proc_id() << " proc ";
+
+        //Cache access, check if hit or miss and update miss counters
         p_caches.at(tran.proc_id()).Access(tran.getAddr(),tran.tranType());
 	   
 	    if(Debug) p_caches.at(tran.proc_id()).printCacheBlk(tran.getAddr());
+
+	    //Based on type of bus, execute transactions on the specific bus
 	    switch (protocol)
         {
             case 0:
+                //Update processor state, bet the bus transaction posted
                 bus_tran = p_caches.at(tran.proc_id()).update_proc_MSI(tran.getAddr(),tran.tranType());
                 if(Debug) cout << "BUS "<< bus_tran << endl;
+                //Complete bus side of transaction
                 MSI->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
             
             case 1:
+                //Check if copy of the data present in any other cache
                 bus_chk = MESI->check(tran.getAddr(),tran.proc_id());
+                //Update processor state, bet the bus transaction posted
                 bus_tran = p_caches.at(tran.proc_id()).update_proc_MESI(tran.getAddr(),tran.tranType(),bus_chk);
                 if(Debug) cout << "BUS "<< bus_tran << endl;
+                //Complete bus side of transaction
                 MESI->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
             
             case 2:
+                //Check if copy of the data present in any other cache
                 bus_chk = Dragon->check(tran.getAddr(),tran.proc_id());
+                //Update processor state, bet the bus transaction posted
                 bus_tran = p_caches.at(tran.proc_id()).update_proc_Dragon(tran.getAddr(),tran.tranType(),bus_chk);
                 if(Debug) cout << "BUS "<< bus_tran << endl;
+                //Complete bus side of transaction
                 Dragon->access(tran.getAddr(),tran.proc_id(),bus_tran);
                 break;
         }
@@ -131,15 +146,10 @@ int main(int argc, char *argv[])
 	        p_caches.at(tran.proc_id()).printCacheBlk(tran.getAddr());
 	        cout << endl;
         }
+        //Get next line of trace
 	    getline(trace,strIn);
     }
 
-	///******************************************************************//
-	//**read trace file,line by line,each(processor#,operation,address)**//
-	//*****propagate each request down through memory hierarchy**********//
-	//*****by calling cachesArray[processor#]->Access(...)***************//
-	///******************************************************************//
-	
 	//********************************//
 	//print out all caches' statistics //
 	//********************************//
